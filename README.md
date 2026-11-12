@@ -42,7 +42,11 @@ See [`docs/console.md`](docs/console.md) for the full command list.
   At power-on the boot ROM copies the image into 32 KB of code SRAM at `0x0` and runs it from there.
 - Stepper driver (STEP/DIR/EN + mode pins), UV LED driver, 4-digit 7-segment display, 5 capacitive
   buttons with LEDs, lid switch, buzzer.
-- SWD on PA2 (SWCLK) / PA3 (SWDIO). UART pads: pad "RX" = PE7 (UART1 TX), pad "TX" = PE5 (UART1 RX).
+- Power: external 24 V DC brick.
+- SWD on PA2 (SWCLK) / PA3 (SWDIO). On my unit the SWD pads are labelled on the silkscreen and have a
+  header fitted, so no soldering is needed to flash or debug.
+- UART1 pads: pad "RX" = PE7 (UART1 TX), pad "TX" = PE5 (UART1 RX). The pads are silkscreened but
+  **not populated** on my unit, so some soldering (a header or flying leads) is needed to use the UART.
 
 Details, including which findings were verified on hardware: [`docs/hardware.md`](docs/hardware.md).
 
@@ -73,18 +77,17 @@ arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2:eesz=4M2M esp_bridge
 
 ## Wiring the ESP8266 bridge (NodeMCU)
 
+The unit's UART pads are silkscreened but not populated, so solder a header or leads to them first.
+
 | NodeMCU | Unit |
 |---|---|
 | D8 (GPIO15), TX | pad "TX" (PE5, unit RX) |
 | D7 (GPIO13), RX | pad "RX" (PE7, unit TX) |
 | GND | GND |
 
-**Power:** don't run the ESP8266 from the unit's 3.3 V rail. WiFi start-up current spikes (up to
-~500 mA) brown the ESP out. The SWM190 keeps running down to 2.3 V, so the unit looks fine while the
-ESP fails to boot. Add a small buck converter that steps the unit's 24 V supply down to **5 V into
-the NodeMCU's VIN** (or 3.3 V into its 3V3 pin). Pick one rated for at least 30 V in and 1 A out.
-Never put 12 V or 24 V on VIN: the board's AMS1117 regulator overheats on WiFi current peaks at 12 V,
-and 24 V exceeds its absolute maximum input. Keep the grounds common.
+**Power:** be careful with the power rails. Powering the NodeMCU from the unit has been fine so far,
+but check the voltage of whatever rail you tap before connecting anything, and never put the unit's
+24 V supply on the NodeMCU's VIN or 3V3 pin. Keep the grounds common.
 
 ## License
 
@@ -97,5 +100,6 @@ Not affiliated with or endorsed by Elegoo or Synwit.
 
 ## Disclaimer
 
-This involves mains-powered equipment, UV LEDs and moving parts. The interlock override exists for
-testing and is off by default; UV light is harmful to eyes and skin. Use at your own risk.
+This involves UV LEDs, moving parts and a 24 V DC supply (the unit runs from an external 24 V brick).
+The interlock override exists for testing and is off by default; UV light is harmful to eyes and skin.
+Use at your own risk.

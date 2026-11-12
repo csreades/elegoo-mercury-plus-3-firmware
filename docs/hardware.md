@@ -11,7 +11,7 @@ the stock firmware.
 | IDs | CPUID `0x410CC200`, SWD DP IDCODE `0x0BB11477`, chip ID `0x854012` at `0x4000008C` |
 | Clock | 24 MHz crystal on PC0/PC1, PLL (÷6 ×30 ÷8) → **60 MHz** core (**verified** via UART baud) |
 | Flash | Puya serial flash, JEDEC `85 40 11` (1 Mbit / 128 KB), mapped at `0x41000000` (**verified**) |
-| Debug | SWD: PA2 = SWCLK, PA3 = SWDIO. No read protection on the stock unit. |
+| Debug | SWD: PA2 = SWCLK, PA3 = SWDIO. On my unit the SWD pads are labelled on the silkscreen and have a header fitted. No read protection on the stock unit. |
 
 ### Boot and memory scheme (verified)
 
@@ -64,7 +64,7 @@ Consequences:
 | PB5 | WASH |
 | PB6 | Lid switch, **1 = open** (**verified**) |
 
-### UART pads (verified)
+### UART pads (UART1, verified)
 
 | PCB pad label | MCU pin | Function |
 |---|---|---|
@@ -72,6 +72,10 @@ Consequences:
 | "TX" | PE5 | UART1_RX (unit receives) |
 
 The labels are from the point of view of the device you connect: your TX goes to "TX".
+
+The console is on **UART1** (UART0 on PA0/PA1 is unused). On my unit the pads are silkscreened but
+**not populated**, so some soldering (a header or flying leads) is needed before the UART console or
+the ESP bridge can be used.
 
 ### Free / other pins
 

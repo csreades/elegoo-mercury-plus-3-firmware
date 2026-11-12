@@ -1,6 +1,7 @@
 # Console protocol
 
-UART1, 115200 8N1, on the PCB "RX"/"TX" pads. Through the ESP bridge the same console is available on
+UART1, 115200 8N1, on the PCB "RX"/"TX" pads (silkscreened but not populated on my unit: solder a
+header or leads first). Through the ESP bridge the same console is available on
 TCP port 23, and single commands via `GET /api/cmd?c=<command>`.
 
 - One command per line, case-insensitive. Numbers are decimal, except `PEEK`/`POKE`/`FL` arguments, which are hex.

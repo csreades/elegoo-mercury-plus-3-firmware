@@ -25,7 +25,7 @@
 #include "secrets.h"
 #include "web.h"
 
-ADC_MODE(ADC_VCC);                                // A0 unused: measure the ESP's own supply (brownout debugging)
+ADC_MODE(ADC_VCC);                                // A0 unused: measure the ESP's own supply (reported at boot and in /status)
 
 #define HOSTNAME   "washcure"
 #define LED_PIN    LED_BUILTIN                     // GPIO2, blue LED on the ESP-12 module, active low

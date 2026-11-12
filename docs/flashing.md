@@ -4,6 +4,8 @@
 
 Read **`0x41000000`–`0x4101DFFF`** (the serial flash) over SWD. Do **not** dump address `0x0`: that is
 the code SRAM copy. The stock image is in [`../original-firmware/`](../original-firmware/).
+On my unit the SWD pads are labelled on the silkscreen and already have a header fitted, so no
+soldering is needed for this.
 
 ## Image requirements
 
