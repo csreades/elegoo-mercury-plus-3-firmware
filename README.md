@@ -85,10 +85,6 @@ The unit's UART pads are silkscreened but not populated, so solder a header or l
 | D7 (GPIO13), RX | pad "RX" (PE7, unit TX) |
 | GND | GND |
 
-**Power:** be careful with the power rails. Powering the NodeMCU from the unit has been fine so far,
-but check the voltage of whatever rail you tap before connecting anything, and never put the unit's
-24 V supply on the NodeMCU's VIN or 3V3 pin. Keep the grounds common.
-
 ## License
 
 Original code in this repository is MIT licensed (see [`LICENSE`](LICENSE)). The Synwit SDK in
