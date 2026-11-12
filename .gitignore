@@ -1,0 +1,16 @@
+# WiFi credentials - never commit
+esp_bridge/secrets.h
+
+# build outputs
+firmware/*.o
+firmware/sdk/**/*.o
+firmware/*.elf
+firmware/*.bin
+firmware/*.map
+esp_bridge/build/
+
+# local tooling / scratch
+*.gpr
+*.rep/
+__pycache__/
+.vscode/
