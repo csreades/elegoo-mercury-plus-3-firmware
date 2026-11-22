@@ -25,6 +25,7 @@ TCP port 23, and single commands via `GET /api/cmd?c=<command>`.
 | `CFG CURE_DIR 0\|1` | Turntable direction |
 | `CFG SPR <n>` | Steps per revolution, used only for the rpm estimate |
 | `CFG KEY_BEEPS 0\|1` | Button click beeps |
+| `CFG REV_DOWN\|REV_DWELL\|REV_UP <ms>` | Wash reversal: slow-down time, pause at standstill, speed-up time (defaults 3000 / 2500 / 8000) |
 | `SAVE` / `FACTORY` | Save settings to flash / restore defaults (in RAM; `SAVE` to persist) |
 | `BEEP <ms>` | Beep |
 | `TONE <hz> <ms>` | Square wave on the buzzer (bit-banged; an active buzzer gives limited pitch control) |

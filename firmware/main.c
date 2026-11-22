@@ -19,7 +19,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define FW_VERSION "WNC-FW 1.0"
+#define FW_VERSION "WNC-FW 1.1"
 
 /* ======================================================================= pins */
 typedef struct { GPIO_TypeDef *port; uint8_t pin; } pin_t;
@@ -52,7 +52,7 @@ static void out_init(pin_t p, uint32_t level) { pin_set(p, level); GPIO_Init(p.p
 
 /* ======================================================================= settings (flash) */
 #define SETTINGS_OFF   0x1C000u           /* 4 KB sector, well clear of the image */
-#define SETTINGS_MAGIC 0x57434E31u        /* "WCN1" */
+#define SETTINGS_MAGIC 0x57434E32u        /* "WCN2" (v1.1: reversal settings added) */
 typedef struct {
     uint32_t magic;
     uint32_t wash_default_s, cure_default_s;
@@ -61,10 +61,13 @@ typedef struct {
     uint32_t cure_dir;                    /* original 0 */
     uint32_t steps_per_rev;               /* for rpm display; calibrate with CFG SPR */
     uint32_t key_beeps;                   /* 1 = beep on button press */
+    uint32_t rev_down_ms;                 /* wash reversal: slow-down time */
+    uint32_t rev_dwell_ms;                /* wash reversal: pause at standstill (liquid settles) */
+    uint32_t rev_up_ms;                   /* wash reversal: speed-up time (even acceleration) */
     uint32_t crc;
 } settings_t;
 static settings_t cfg;
-static const settings_t CFG_DEFAULT = { SETTINGS_MAGIC, 1200, 600, 55, 35156, 0, 3200, 1, 0 };
+static const settings_t CFG_DEFAULT = { SETTINGS_MAGIC, 1200, 600, 55, 35156, 0, 3200, 1, 3000, 2500, 8000, 0 };
 
 /* ======================================================================= shared state */
 enum { MODE_WASH = 0, MODE_CURE = 1 };
@@ -174,7 +177,7 @@ static void tone_stop(void) { tone_on = 0; TIMR_Stop(TIMR1); }
  */
 #define RAMP_STEP_MS 7
 #define WASH_INIT_CYCLE 30000u
-enum { MP_IDLE, MP_HOLD, MP_WASH_UP, MP_STOP, MP_REV_DOWN, MP_TO_TARGET };
+enum { MP_IDLE, MP_HOLD, MP_WASH_UP, MP_STOP, MP_REV_DOWN, MP_TO_TARGET, MP_REV_DWELL, MP_REV_UP };
 enum { RQ_NONE, RQ_WASH_START, RQ_WASH_REVERSE, RQ_STOP_RAMP, RQ_OFF_NOW, RQ_CONST, RQ_TO_TARGET };
 static volatile struct { uint8_t type, dir; uint32_t period; } mot_req;
 static volatile uint8_t  mp = MP_IDLE;     /* current programme */
@@ -198,6 +201,31 @@ static void wash_up_begin(uint8_t dir) {
     pin_set(M_DIR, dir);                   /* original ramp_up sets DIR first */
     m_per = 1000; mp = MP_WASH_UP;
 }
+/* v1.1 wash reversal. The stock sequence (period 54 -> 499, cut, immediately ramp up reversed
+ * with a period-linear ramp whose speed doubles in the last 0.4 s) stalls the motor against
+ * liquid still swirling the old way. Now: slow down evenly to a crawl, stop, wait for the
+ * liquid, then speed up with constant acceleration. Speed is tracked as SPD_K/period in Q8. */
+#define SPD_K        60000u
+#define REV_STOP_PER 1500u                 /* slow down to this period before cutting the steps */
+#define REV_START_PER 1000u                /* reversed ramp starts here (same as stock) */
+static volatile uint32_t m_spd, m_spd_end, m_spd_step;   /* Q8 */
+static volatile uint32_t m_dwell;          /* ramp ticks left at standstill */
+static uint32_t spd_q8(uint32_t per) { return per ? (SPD_K << 8) / per : 0; }
+static uint32_t per_of(uint32_t q8)  { return q8 ? ((SPD_K << 8) + q8 / 2) / q8 : REV_STOP_PER; }
+static uint32_t spd_step(uint32_t span, uint32_t dur_ms) {
+    uint32_t n = dur_ms / RAMP_STEP_MS; if (n < 1) n = 1;
+    uint32_t st = span / n; return st ? st : 1;
+}
+static void rev_up_begin(uint8_t dir) {
+    uint32_t hold = m_hold ? m_hold : 55;
+    pwm_hw_init(WASH_INIT_CYCLE);
+    pwm_apply(0);
+    pin_set(M_DIR, dir);
+    if (hold >= REV_START_PER) { pwm_apply(hold); m_per = hold; mp = MP_HOLD; return; }
+    m_spd = spd_q8(REV_START_PER); m_spd_end = spd_q8(hold);
+    m_spd_step = spd_step(m_spd_end - m_spd, cfg.rev_up_ms);
+    m_per = REV_START_PER; mp = MP_REV_UP;
+}
 static void motor_service_request(void) {
     uint8_t t = mot_req.type;
     if (t == RQ_NONE) return;
@@ -206,8 +234,11 @@ static void motor_service_request(void) {
     case RQ_WASH_START:   wash_up_begin(mot_req.dir); break;
     case RQ_WASH_REVERSE:
         m_next_dir = mot_req.dir;
-        if (m_per) { m_per = 54; mp = MP_REV_DOWN; m_chain = 1; }   /* original sets 0x36 first */
-        else wash_up_begin(m_next_dir);
+        if (m_applied && m_applied < REV_STOP_PER) {             /* turning: slow down first */
+            m_spd = spd_q8(m_applied); m_spd_end = spd_q8(REV_STOP_PER);
+            m_spd_step = spd_step(m_spd - m_spd_end, cfg.rev_down_ms);
+            m_per = m_applied; mp = MP_REV_DOWN; m_chain = 1;
+        } else { pwm_apply(0); m_per = 0; rev_up_begin(m_next_dir); }
         break;
     case RQ_STOP_RAMP:    m_chain = 0; if (m_per) mp = MP_STOP; else { pwm_apply(0); mp = MP_IDLE; } break;
     case RQ_OFF_NOW:      m_chain = 0; pwm_apply(0); m_per = 0; mp = MP_IDLE; break;
@@ -232,10 +263,26 @@ static void motor_tick(void) {             /* every RAMP_STEP_MS */
         if (m_per < 300) { pwm_apply(m_per); m_per++; }
         else { pwm_apply(0); m_per = 0; mp = MP_IDLE; }
         break;
-    case MP_REV_DOWN:                      /* 54 -> 499 then off, then ramp up reversed */
-        if (m_per < 500) { pwm_apply(m_per); m_per++; }
-        else { pwm_apply(0); m_per = 0; mp = MP_IDLE; if (m_chain) { m_chain = 0; wash_up_begin(m_next_dir); } }
+    case MP_REV_DOWN:                      /* even slow-down to a crawl, off, then dwell */
+        if (m_spd > m_spd_end + m_spd_step) { m_spd -= m_spd_step; m_per = per_of(m_spd); pwm_apply(m_per); }
+        else {
+            pwm_apply(0); m_per = 0;
+            if (m_chain) { m_chain = 0; m_dwell = cfg.rev_dwell_ms / RAMP_STEP_MS; mp = MP_REV_DWELL; }
+            else mp = MP_IDLE;
+        }
         break;
+    case MP_REV_DWELL:                     /* standstill (driver still holding) while the liquid slows */
+        if (m_dwell) m_dwell--; else rev_up_begin(m_next_dir);
+        break;
+    case MP_REV_UP: {                      /* constant acceleration up to the wash speed */
+        uint32_t hold = m_hold ? m_hold : 55;
+        if (m_spd + m_spd_step < m_spd_end) {
+            m_spd += m_spd_step; m_per = per_of(m_spd);
+            if (m_per < hold) m_per = hold;
+            pwm_apply(m_per);
+        } else { pwm_apply(hold); m_per = hold; mp = MP_HOLD; }
+        break;
+    }
     case MP_TO_TARGET:
         if (m_per == m_hold || (m_per >= 1000 && m_hold >= 1000)) { pwm_apply(m_hold); m_per = m_hold; mp = MP_HOLD; }
         else { m_per += (m_per < m_hold) ? 1 : -1; pwm_apply(m_per); }
@@ -243,7 +290,7 @@ static void motor_tick(void) {             /* every RAMP_STEP_MS */
     default: break;
     }
 }
-static int motor_busy(void) { return mp == MP_WASH_UP || mp == MP_STOP || mp == MP_REV_DOWN || mp == MP_TO_TARGET || mot_req.type != RQ_NONE; }
+static int motor_busy(void) { return mp == MP_WASH_UP || mp == MP_STOP || mp == MP_REV_DOWN || mp == MP_REV_DWELL || mp == MP_REV_UP || mp == MP_TO_TARGET || mot_req.type != RQ_NONE; }
 static void motor_request(uint8_t type, uint8_t dir, uint32_t period) {
     __disable_irq(); mot_req.dir = dir; mot_req.period = period; mot_req.type = type; __enable_irq();
 }
@@ -598,6 +645,9 @@ static void config_print(void) {
     con_puts(" cure_dir="); con_putu(cfg.cure_dir);
     con_puts(" steps_per_rev="); con_putu(cfg.steps_per_rev);
     con_puts(" key_beeps="); con_putu(cfg.key_beeps);
+    con_puts(" rev_down_ms="); con_putu(cfg.rev_down_ms);
+    con_puts(" rev_dwell_ms="); con_putu(cfg.rev_dwell_ms);
+    con_puts(" rev_up_ms="); con_putu(cfg.rev_up_ms);
     con_nl();
 }
 static const char HELP[] =
@@ -612,6 +662,7 @@ static const char HELP[] =
 " CFG WASH_DEFAULT|CURE_DEFAULT <s>\r\n"
 " CFG WASH_PERIOD|CURE_PERIOD <pwm>  speed (smaller = faster; orig 55 / 35156)\r\n"
 " CFG CURE_DIR 0|1 | CFG SPR <steps/rev> | CFG KEY_BEEPS 0|1\r\n"
+" CFG REV_DOWN|REV_DWELL|REV_UP <ms>  wash reversal: slow-down / pause / speed-up\r\n"
 " SAVE | FACTORY                  persist settings / restore defaults\r\n"
 " BEEP <ms> | TONE <hz> <ms>      buzzer\r\n"
 " DISP <text> [ms] | DISP AUTO    display overlay\r\n"
@@ -696,6 +747,9 @@ static void cmd(char *line) {
         else if (eq(a, "CURE_DIR") && v <= 1) cfg.cure_dir = v;
         else if (eq(a, "SPR") && v > 0) cfg.steps_per_rev = v;
         else if (eq(a, "KEY_BEEPS") && v <= 1) cfg.key_beeps = v;
+        else if (eq(a, "REV_DOWN") && v >= 500 && v <= 30000) cfg.rev_down_ms = v;
+        else if (eq(a, "REV_DWELL") && v <= 30000) cfg.rev_dwell_ms = v;
+        else if (eq(a, "REV_UP") && v >= 1000 && v <= 60000) cfg.rev_up_ms = v;
         else { err("bad name/value"); return; }
         if (eq(a, "CURE_PERIOD") && running && mode == MODE_CURE) cure_motor_on = 0;   /* apply now */
         ok();

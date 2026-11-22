@@ -18,12 +18,15 @@ This repo contains:
 
 ## What the replacement firmware does
 
-It reproduces the stock behaviour (same motor PWM settings, ramp shapes, wash direction reversal at
+It reproduces the stock behaviour (same motor PWM settings, start/stop ramp shapes, wash direction reversal at
 half time, cure lid interlock and alarm, button behaviour, LEDs, beeps) and adds:
 
 - **Power-on in CURE mode** at 10:00. Selecting WASH loads 20:00, CURE loads 10:00 (both configurable, saved to flash).
 - After a cycle finishes, the mode stays selected and its default time is reloaded.
 - The display blinks **`LId`** while a cure is paused because the lid is open.
+- **Gentler wash reversal** (1.1): the stock sequence cut the motor at about 11 % speed and ramped straight
+  back up, which could stall against liquid still swirling the old way. Now it slows evenly to a crawl,
+  pauses, then speeds up with constant acceleration (`CFG REV_DOWN|REV_DWELL|REV_UP`).
 - Non-blocking design (1 ms tick) instead of busy-wait loops.
 - A **UART console** (115200 8N1 on the PCB's RX/TX pads) giving full control and read-back:
   mode/time/start/pause/stop, lid state, motor speed and direction, LEDs, buttons (events and

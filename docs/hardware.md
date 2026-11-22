@@ -85,7 +85,7 @@ low by something on the board. PB0 is the ISP strap (keep low at reset).
 ## Stock firmware behaviour (summary)
 
 - **Wash:** motor ramps the PWM period 1000 → 701, jumps to 600 → 55 (~6 s), runs, and at half time ramps
-  down 54 → 499, stops, flips DIR and ramps up again. Stop = ramp to 300 then off. Lid not checked.
+  down 54 → 499, stops, flips DIR and ramps up again. (The replacement firmware from 1.1 reverses more gently: see the README.) Stop = ramp to 300 then off. Lid not checked.
 - **Cure:** turntable at period 35156 in quiet mode; UV on while the lid is closed. Opening the lid stops
   motor, UV and the countdown, and flashes LEDs, display and buzzer until it closes.
 - **Buttons:** short press acts on release; ± auto-repeat after a 2 s hold; time 0–30 min in 30 s steps.
