@@ -24,6 +24,9 @@ half time, cure lid interlock and alarm, button behaviour, LEDs, beeps) and adds
 - **Power-on in CURE mode** at 10:00. Selecting WASH loads 20:00, CURE loads 10:00 (both configurable, saved to flash).
 - After a cycle finishes, the mode stays selected and its default time is reloaded.
 - The display blinks **`LId`** while a cure is paused because the lid is open.
+- **Wash reversal is off by default** (1.2, `CFG WASH_REVERSE 1` to enable). The stock firmware reverses at half
+  time without trouble, but this firmware stalls the motor there and the cause has not been found. Known
+  differences from stock at motor start: stock re-runs SystemInit() and ORs 0x303 into PWMG CHEN.
 - **Gentler wash reversal** (1.1): the stock sequence cut the motor at about 11 % speed and ramped straight
   back up, which could stall against liquid still swirling the old way. Now it slows evenly to a crawl,
   pauses, then speeds up with constant acceleration (`CFG REV_DOWN|REV_DWELL|REV_UP`).

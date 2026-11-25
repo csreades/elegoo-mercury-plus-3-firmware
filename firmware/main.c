@@ -19,7 +19,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define FW_VERSION "WNC-FW 1.1"
+#define FW_VERSION "WNC-FW 1.2"
 
 /* ======================================================================= pins */
 typedef struct { GPIO_TypeDef *port; uint8_t pin; } pin_t;
@@ -52,7 +52,7 @@ static void out_init(pin_t p, uint32_t level) { pin_set(p, level); GPIO_Init(p.p
 
 /* ======================================================================= settings (flash) */
 #define SETTINGS_OFF   0x1C000u           /* 4 KB sector, well clear of the image */
-#define SETTINGS_MAGIC 0x57434E32u        /* "WCN2" (v1.1: reversal settings added) */
+#define SETTINGS_MAGIC 0x57434E33u        /* "WCN3" (v1.2: wash_reverse added) */
 typedef struct {
     uint32_t magic;
     uint32_t wash_default_s, cure_default_s;
@@ -64,10 +64,11 @@ typedef struct {
     uint32_t rev_down_ms;                 /* wash reversal: slow-down time */
     uint32_t rev_dwell_ms;                /* wash reversal: pause at standstill (liquid settles) */
     uint32_t rev_up_ms;                   /* wash reversal: speed-up time (even acceleration) */
+    uint32_t wash_reverse;                /* 1 = reverse direction at half time (stock behaviour); 0 = one direction */
     uint32_t crc;
 } settings_t;
 static settings_t cfg;
-static const settings_t CFG_DEFAULT = { SETTINGS_MAGIC, 1200, 600, 55, 35156, 0, 3200, 1, 3000, 2500, 8000, 0 };
+static const settings_t CFG_DEFAULT = { SETTINGS_MAGIC, 1200, 600, 55, 35156, 0, 3200, 1, 3000, 2500, 8000, 0, 0 };
 
 /* ======================================================================= shared state */
 enum { MODE_WASH = 0, MODE_CURE = 1 };
@@ -501,7 +502,7 @@ static void auto_step(void) {
         if (running) {
             leds_auto();
             pin_set(M_NEN, 0);
-            if (time_s < total_s / 2) {                         /* second half: reverse */
+            if (cfg.wash_reverse && time_s < total_s / 2) {     /* second half: reverse (off by default since 1.2) */
                 if (!wash_rev_started) { pin_set(M_A13, 0); pin_set(M_A12, 1); m_hold = cfg.wash_period; motor_request(RQ_WASH_REVERSE, 1, 0); wash_rev_started = 1; evt("MOTOR", "REVERSE"); }
             } else if (!wash_fwd_started) {
                 pin_set(M_A13, 0); pin_set(M_A12, 1); pin_set(M_A14, 1);
@@ -648,6 +649,7 @@ static void config_print(void) {
     con_puts(" rev_down_ms="); con_putu(cfg.rev_down_ms);
     con_puts(" rev_dwell_ms="); con_putu(cfg.rev_dwell_ms);
     con_puts(" rev_up_ms="); con_putu(cfg.rev_up_ms);
+    con_puts(" wash_reverse="); con_putu(cfg.wash_reverse);
     con_nl();
 }
 static const char HELP[] =
@@ -662,6 +664,7 @@ static const char HELP[] =
 " CFG WASH_DEFAULT|CURE_DEFAULT <s>\r\n"
 " CFG WASH_PERIOD|CURE_PERIOD <pwm>  speed (smaller = faster; orig 55 / 35156)\r\n"
 " CFG CURE_DIR 0|1 | CFG SPR <steps/rev> | CFG KEY_BEEPS 0|1\r\n"
+" CFG WASH_REVERSE 0|1            reverse at half time (default 0 = off)\r\n"
 " CFG REV_DOWN|REV_DWELL|REV_UP <ms>  wash reversal: slow-down / pause / speed-up\r\n"
 " SAVE | FACTORY                  persist settings / restore defaults\r\n"
 " BEEP <ms> | TONE <hz> <ms>      buzzer\r\n"
@@ -747,6 +750,7 @@ static void cmd(char *line) {
         else if (eq(a, "CURE_DIR") && v <= 1) cfg.cure_dir = v;
         else if (eq(a, "SPR") && v > 0) cfg.steps_per_rev = v;
         else if (eq(a, "KEY_BEEPS") && v <= 1) cfg.key_beeps = v;
+        else if (eq(a, "WASH_REVERSE") && v <= 1) cfg.wash_reverse = v;
         else if (eq(a, "REV_DOWN") && v >= 500 && v <= 30000) cfg.rev_down_ms = v;
         else if (eq(a, "REV_DWELL") && v <= 30000) cfg.rev_dwell_ms = v;
         else if (eq(a, "REV_UP") && v >= 1000 && v <= 60000) cfg.rev_up_ms = v;
